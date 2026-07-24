@@ -7,3 +7,6 @@ Task 6: complete (commits d66963a..007373c, review clean — minor: missing #inc
 Task 5: complete (commits 5acfbe3..d66963a, review clean — trivial delegation)
 Task 8: complete (commits 9b1fd66..8722a7b, review OK — source matches brief; link failure is env-only, libpq-dev missing locally, Docker has it)
 Task 9: complete (commits 8722a7b..c9de58c, review clean — source matches brief, app_d ELF built)
+Task 10: complete (commits c9de58c..8af7de1, 11 test cases across 3 modules)
+Task 11: complete (commits 8af7de1..12b71d6, 8 Docker/deployment files)
+Task 12: complete (test.sh committed with Task 11, curl-driven e2e)
