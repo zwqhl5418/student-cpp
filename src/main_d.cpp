@@ -57,13 +57,13 @@ int main() {
     // 处理请求
     std::string html = HandleIndex(classFilter);
 
-    // 输出 HTTP 响应
+    // 输出 HTTP 响应（注意：libfcgi 的 printf 不完全支持 C99 格式符如 %zu，
+    // 因此使用 %lu 并显式转型为 unsigned long，或直接省略 Content-Length）
     FCGX_FPrintF(request.out,
         "Content-Type: text/html; charset=UTF-8\r\n"
-        "Content-Length: %zu\r\n"
         "\r\n"
         "%s",
-        html.size(), html.c_str());
+        html.c_str());
   }
 
   // 清理

@@ -8,3 +8,4 @@ coverage_html/
 .vscode/
 *.swp
 *.deb
+spawn-fcgi
