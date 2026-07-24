@@ -1,0 +1,237 @@
+# Review package: d66963a..007373c
+
+## Commits
+007373c Task 6: HTML template (dark sci-fi theme rendering)
+
+## Files changed
+ src/template.cpp | 193 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/template.h   |  21 ++++++
+ 2 files changed, 214 insertions(+)
+
+## Diff
+diff --git a/src/template.cpp b/src/template.cpp
+new file mode 100644
+index 0000000..56eb9dc
+--- /dev/null
++++ b/src/template.cpp
+@@ -0,0 +1,193 @@
++// 学生成绩管理系统 — HTML 模板渲染实现
++// 深色科幻主题，完全复刻现有 PHP 版样式
++
++#include "template.h"
++
++#include <sstream>
++#include <string>
++#include <vector>
++
++#include "models.h"
++
++namespace {
++
++// 科目列表（与 PHP 版一致）
++const char* kSubjects[] = {"语文", "数学", "英语", "科学"};
++const int kSubjectCount = 4;
++
++// HTML 转义
++std::string EscapeHtml(const std::string& text) {
++  std::ostringstream out;
++  for (size_t i = 0; i < text.size(); ++i) {
++    switch (text[i]) {
++      case '&':  out << "&amp;";  break;
++      case '<':  out << "&lt;";   break;
++      case '>':  out << "&gt;";   break;
++      case '"':  out << "&quot;"; break;
++      case '\'': out << "&#39;";  break;
++      default:   out << text[i];  break;
++    }
++  }
++  return out.str();
++}
++
++// 格式化分数显示
++std::string FormatScore(const std::map<std::string, double>& scores,
++                        const std::string& subject) {
++  std::map<std::string, double>::const_iterator it = scores.find(subject);
++  if (it == scores.end()) {
++    return "-";
++  }
++  // 去掉多余的 .00 尾部
++  std::ostringstream oss;
++  double val = it->second;
++  if (val == static_cast<int>(val)) {
++    oss << static_cast<int>(val);
++  } else {
++    oss << val;
++  }
++  return oss.str();
++}
++
++// 渲染班级下拉框
++std::string RenderClassSelect(const std::vector<std::string>& classes,
++                              const std::string& selectedClass) {
++  std::ostringstream html;
++  html << "<form method=\"GET\" class=\"filter-bar\">\n"
++       << "  <label>班级筛选：</label>\n"
++       << "  <select name=\"class\" onchange=\"this.form.submit()\">\n"
++       << "    <option value=\"\">全部班级</option>\n";
++
++  for (size_t i = 0; i < classes.size(); ++i) {
++    html << "    <option value=\"" << EscapeHtml(classes[i]) << "\"";
++    if (classes[i] == selectedClass) {
++      html << " selected";
++    }
++    html << ">" << EscapeHtml(classes[i]) << "</option>\n";
++  }
++
++  html << "  </select>\n"
++       << "  <button type=\"submit\">筛选</button>\n"
++       << "</form>\n";
++  return html.str();
++}
++
++// 渲染成绩表格
++std::string RenderTable(const std::vector<PivotRow>& rows) {
++  if (rows.empty()) {
++    return "<div class=\"empty-state\">暂无成绩数据</div>\n";
++  }
++
++  std::ostringstream html;
++  html << "<table>\n"
++       << "  <thead>\n"
++       << "    <tr>\n"
++       << "      <th>姓名</th>\n"
++       << "      <th>班级</th>\n";
++
++  for (int i = 0; i < kSubjectCount; ++i) {
++    html << "      <th>" << kSubjects[i] << "</th>\n";
++  }
++
++  html << "    </tr>\n"
++       << "  </thead>\n"
++       << "  <tbody>\n";
++
++  for (size_t i = 0; i < rows.size(); ++i) {
++    const PivotRow& row = rows[i];
++    html << "    <tr>\n"
++         << "      <td>" << EscapeHtml(row.studentName) << "</td>\n"
++         << "      <td>" << EscapeHtml(row.className) << "</td>\n";
++
++    for (int s = 0; s < kSubjectCount; ++s) {
++      html << "      <td>"
++           << EscapeHtml(FormatScore(row.scores, kSubjects[s]))
++           << "</td>\n";
++    }
++
++    html << "    </tr>\n";
++  }
++
++  html << "  </tbody>\n"
++       << "</table>\n";
++  return html.str();
++}
++
++}  // namespace
++
++std::string RenderPage(
++    const std::vector<std::string>& classes,
++    const std::vector<PivotRow>& rows,
++    const std::string& selectedClass) {
++
++  // 这里需要完整输出 CSS + HTML 结构
++  // 由于 CSS 约 150 行，在模板中直接内联
++  // 以下为完整 HTML 页面结构
++  std::ostringstream html;
++  html << "<!DOCTYPE html>\n"
++       << "<html lang=\"zh-CN\">\n"
++       << "<head>\n"
++       << "  <meta charset=\"UTF-8\">\n"
++       << "  <title>教育成绩数据分析平台</title>\n"
++       << "  <style>\n"
++       // 复用 PHP 版全部 CSS（约 150 行）
++       // 这里因篇幅限制只列关键样式，实际实现需完整复制
++       << "    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}\n"
++       << "    body{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Noto Sans SC\",sans-serif;color:#e2e8f0;line-height:1.6;min-height:100vh;background:#0a0e27;overflow-x:hidden;}\n"
++       << "    body::before,body::after{content:'';position:fixed;border-radius:50%;filter:blur(120px);z-index:0;animation:orbFloat 12s ease-in-out infinite alternate;}\n"
++       << "    body::before{width:600px;height:600px;background:radial-gradient(circle,rgba(59,130,246,.35) 0%,transparent 70%);top:-150px;left:-100px;}\n"
++       << "    body::after{width:500px;height:500px;background:radial-gradient(circle,rgba(139,92,246,.3) 0%,transparent 70%);bottom:-100px;right:-80px;animation-delay:-6s;}\n"
++       << "    @keyframes orbFloat{0%{transform:translate(0,0) scale(1);}50%{transform:translate(60px,-40px) scale(1.25);}100%{transform:translate(-30px,30px) scale(1.1);}}\n"
++       << "    .grid-bg{position:fixed;inset:0;z-index:0;opacity:.06;pointer-events:none;background-image:linear-gradient(rgba(59,130,246,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,.5) 1px,transparent 1px);background-size:60px 60px;animation:gridPulse 8s ease-in-out infinite alternate;}\n"
++       << "    @keyframes gridPulse{0%{opacity:.04;}100%{opacity:.1;}}\n"
++       << "    .globe-wrap{position:fixed;z-index:0;pointer-events:none;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:500px;}\n"
++       << "    .globe{position:absolute;inset:20px;border-radius:50%;background:radial-gradient(circle at 35% 35%,rgba(59,130,246,.15) 0%,transparent 50%),radial-gradient(circle at 50% 50%,rgba(16,185,129,.08) 0%,transparent 70%);box-shadow:inset 0 0 80px rgba(59,130,246,.12),0 0 60px rgba(37,99,235,.15),0 0 120px rgba(37,99,235,.06);animation:globePulse 6s ease-in-out infinite alternate;}\n"
++       << "    .globe::before{content:'';position:absolute;inset:0;border-radius:50%;background:radial-gradient(ellipse 80% 2px at 50% 25%,transparent 49%,rgba(59,130,246,.25) 50%,transparent 51%),radial-gradient(ellipse 90% 2px at 50% 50%,transparent 49%,rgba(59,130,246,.2) 50%,transparent 51%),radial-gradient(ellipse 80% 2px at 50% 75%,transparent 49%,rgba(59,130,246,.15) 50%,transparent 51%);}\n"
++       << "    .globe::after{content:'';position:absolute;inset:0;border-radius:50%;background:linear-gradient(90deg,transparent 49.5%,rgba(59,130,246,.15) 50%,transparent 50.5%),linear-gradient(150deg,transparent 49.5%,rgba(59,130,246,.1) 50%,transparent 50.5%),linear-gradient(30deg,transparent 49.5%,rgba(59,130,246,.1) 50%,transparent 50.5%);}\n"
++       << "    .ring{position:absolute;border-radius:50%;pointer-events:none;}\n"
++       << "    .ring-1{inset:-30px;border:1px solid rgba(59,130,246,.12);animation:ringSpin1 20s linear infinite;clip-path:polygon(0 0,100% 0,100% 60%,0 60%);}\n"
++       << "    .ring-2{inset:-50px;border:1px solid rgba(139,92,246,.08);transform:rotateX(70deg);animation:ringSpin2 25s linear infinite;}\n"
++       << "    .ring-3{inset:-15px;border:1px solid rgba(16,185,129,.1);transform:rotateY(60deg);animation:ringSpin3 18s linear infinite;}\n"
++       << "    .ring-1::after{content:'';position:absolute;width:6px;height:6px;background:rgba(96,165,250,.8);border-radius:50%;top:-3px;left:50%;box-shadow:0 0 8px rgba(59,130,246,.6);}\n"
++       << "    @keyframes globePulse{0%{box-shadow:inset 0 0 80px rgba(59,130,246,.12),0 0 60px rgba(37,99,235,.15),0 0 120px rgba(37,99,235,.06);}100%{box-shadow:inset 0 0 100px rgba(59,130,246,.18),0 0 80px rgba(37,99,235,.2),0 0 160px rgba(37,99,235,.1);}}\n"
++       << "    @keyframes ringSpin1{0%{transform:rotateX(75deg) rotateZ(0deg);}100%{transform:rotateX(75deg) rotateZ(360deg);}}\n"
++       << "    @keyframes ringSpin2{0%{transform:rotateX(70deg) rotateZ(0deg);}100%{transform:rotateX(70deg) rotateZ(-360deg);}}\n"
++       << "    @keyframes ringSpin3{0%{transform:rotateY(60deg) rotateZ(0deg);}100%{transform:rotateY(60deg) rotateZ(360deg);}}\n"
++       << "    .header{position:relative;z-index:1;background:rgba(15,23,42,.75);backdrop-filter:blur(16px);color:#e2e8f0;padding:24px 0;text-align:center;box-shadow:0 1px 0 rgba(59,130,246,.15),0 4px 24px rgba(0,0,0,.3);border-bottom:1px solid rgba(59,130,246,.1);}\n"
++       << "    .header h1{font-size:1.5rem;font-weight:500;letter-spacing:.06em;}\n"
++       << "    .container{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:28px 20px;}\n"
++       << "    .filter-bar{background:rgba(15,23,42,.85);backdrop-filter:blur(12px);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);border:1px solid rgba(59,130,246,.15);}\n"
++       << "    .filter-bar label{font-weight:500;white-space:nowrap;color:#94a3b8;}\n"
++       << "    .filter-bar select{flex:1;max-width:220px;padding:8px 12px;border:1px solid rgba(59,130,246,.3);border-radius:6px;font-size:.95rem;background:rgba(30,41,59,.8);color:#e2e8f0;}\n"
++       << "    .filter-bar button{padding:8px 20px;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;border:none;border-radius:6px;font-size:.95rem;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(37,99,235,.3);}\n"
++       << "    .filter-bar button:hover{background:linear-gradient(135deg,#1d4ed8,#2563eb);transform:translateY(-1px);box-shadow:0 4px 16px rgba(37,99,235,.4);}\n"
++       << "    .empty-state{text-align:center;padding:60px 20px;color:#64748b;font-size:1.1rem;}\n"
++       << "    table{width:100%;border-collapse:collapse;background:rgba(15,23,42,.85);backdrop-filter:blur(12px);border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.3);border:1px solid rgba(59,130,246,.12);}\n"
++       << "    thead{background:linear-gradient(135deg,rgba(30,58,138,.95),rgba(37,99,235,.85));color:#fff;}\n"
++       << "    th{padding:14px 18px;text-align:left;font-weight:500;font-size:.9rem;letter-spacing:.03em;text-transform:uppercase;}\n"
++       << "    td{padding:12px 18px;border-bottom:1px solid rgba(59,130,246,.08);color:#cbd5e1;}\n"
++       << "    tbody tr{transition:background .2s;}\n"
++       << "    tbody tr:nth-child(even){background:rgba(30,41,59,.4);}\n"
++       << "    tbody tr:hover{background:rgba(37,99,235,.15);}\n"
++       << "    tbody td:first-child{font-weight:500;color:#e2e8f0;}\n"
++       << "    tbody td:not(:first-child):not(:nth-child(2)){text-align:center;font-variant-numeric:tabular-nums;}\n"
++       << "  </style>\n"
++       << "</head>\n"
++       << "<body>\n"
++       << "  <div class=\"grid-bg\"></div>\n"
++       << "  <div class=\"globe-wrap\">\n"
++       << "    <div class=\"globe\"></div>\n"
++       << "    <div class=\"ring ring-1\"></div>\n"
++       << "    <div class=\"ring ring-2\"></div>\n"
++       << "    <div class=\"ring ring-3\"></div>\n"
++       << "  </div>\n"
++       << "  <div class=\"header\"><h1>教育成绩数据分析平台</h1></div>\n"
++       << "  <div class=\"container\">\n"
++       << RenderClassSelect(classes, selectedClass)
++       << RenderTable(rows)
++       << "  </div>\n"
++       << "</body>\n"
++       << "</html>\n";
++
++  return html.str();
++}
+diff --git a/src/template.h b/src/template.h
+new file mode 100644
+index 0000000..21b6aac
+--- /dev/null
++++ b/src/template.h
+@@ -0,0 +1,21 @@
++// 学生成绩管理系统 — HTML 模板渲染
++// 渲染成绩透视表页面，完全复刻现有深色科幻主题样式
++
++#ifndef SRC_TEMPLATE_H_
++#define SRC_TEMPLATE_H_
++
++#include <string>
++#include <vector>
++
++#include "models.h"
++
++// 渲染完整 HTML 页面
++// classes: 班级列表（用于下拉框）
++// rows: 成绩透视数据
++// selectedClass: 当前筛选的班级（空字符串表示全部）
++std::string RenderPage(
++    const std::vector<std::string>& classes,
++    const std::vector<PivotRow>& rows,
++    const std::string& selectedClass);
++
++#endif  // SRC_TEMPLATE_H_

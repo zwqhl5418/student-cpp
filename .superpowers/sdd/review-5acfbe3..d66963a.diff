@@ -1,0 +1,55 @@
+# Review package: 5acfbe3..d66963a
+
+## Commits
+d66963a Task 5: service layer (business logic delegation)
+
+## Files changed
+ src/service.cpp | 13 +++++++++++++
+ src/service.h   | 19 +++++++++++++++++++
+ 2 files changed, 32 insertions(+)
+
+## Diff
+diff --git a/src/service.cpp b/src/service.cpp
+new file mode 100644
+index 0000000..5a054e5
+--- /dev/null
++++ b/src/service.cpp
+@@ -0,0 +1,13 @@
++// 学生成绩管理系统 — 业务逻辑层实现
++
++#include "service.h"
++
++#include "dao.h"
++
++std::vector<std::string> GetClasses() {
++  return QueryClasses();
++}
++
++std::vector<PivotRow> GetStudentScores(const std::string& classFilter) {
++  return QueryPivot(classFilter);
++}
+diff --git a/src/service.h b/src/service.h
+new file mode 100644
+index 0000000..c4f0bea
+--- /dev/null
++++ b/src/service.h
+@@ -0,0 +1,19 @@
++// 学生成绩管理系统 — 业务逻辑层
++// 封装数据查询，为 Handler 提供语义化接口
++
++#ifndef SRC_SERVICE_H_
++#define SRC_SERVICE_H_
++
++#include <string>
++#include <vector>
++
++#include "models.h"
++
++// 获取所有不重复班级列表
++std::vector<std::string> GetClasses();
++
++// 获取学生成绩透视数据
++// classFilter 为空时查询全部学生
++std::vector<PivotRow> GetStudentScores(const std::string& classFilter);
++
++#endif  // SRC_SERVICE_H_

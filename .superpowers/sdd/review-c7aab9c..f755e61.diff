@@ -1,0 +1,121 @@
+# Review package: c7aab9c..f755e61
+
+## Commits
+f755e61 Cleanup: remove accidentally tracked .claude temp file
+36ae6fb Task 1: 项目脚手架
+
+## Files changed
+ .gitignore    |  9 +++++++++
+ Makefile      | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ test/Makefile | 29 +++++++++++++++++++++++++++++
+ 3 files changed, 90 insertions(+)
+
+## Diff
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..c5ea136
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,9 @@
++build/
++*.o
++*.d
++app_a
++app_d
++coverage.info
++coverage_html/
++.vscode/
++*.swp
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..5b41f47
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,52 @@
++# 构建方案: A (cpp-httplib) 或 D (FastCGI)
++SCHEME ?= A
++
++CXX      := g++
++CXXFLAGS := -std=c++11 -Wall -Wextra -O2
++LDFLAGS  := -lpq -lpthread
++
++BUILD_DIR := build
++TARGET    := $(BUILD_DIR)/app_a
++SRCS      := src/handler.cpp src/service.cpp src/dao.cpp src/template.cpp src/config.cpp
++
++# 头文件路径
++INCLUDES  := -Isrc -Iinclude
++
++ifeq ($(SCHEME), D)
++  TARGET   := $(BUILD_DIR)/app_d
++  SRCS     += src/main_d.cpp
++  CXXFLAGS += -DBUILD_SCHEME_D
++  LDFLAGS  += -lfcgi++
++else
++  SRCS     += src/main_a.cpp
++endif
++
++OBJS := $(SRCS:src/%.cpp=$(BUILD_DIR)/%.o)
++DEPS := $(OBJS:.o=.d)
++
++.PHONY: all clean
++
++all: $(TARGET)
++
++# 链接
++$(TARGET): $(OBJS)
++	@mkdir -p $(BUILD_DIR)
++	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
++
++# 编译（自动生成依赖文件）
++$(BUILD_DIR)/%.o: src/%.cpp
++	@mkdir -p $(BUILD_DIR)
++	$(CXX) $(CXXFLAGS) $(INCLUDES) -MMD -MP -c $< -o $@
++
++# Docker 环境中的单元测试（需要 PostgreSQL 可用）
++# 仅在容器内使用，不要在本地直接调用
++test: $(TARGET)
++	cd test && make
++
++# 清理
++clean:
++	rm -rf $(BUILD_DIR)
++	cd test && make clean || true
++
++# 引入自动生成的依赖
++-include $(DEPS)
+diff --git a/test/Makefile b/test/Makefile
+new file mode 100644
+index 0000000..39ca304
+--- /dev/null
++++ b/test/Makefile
+@@ -0,0 +1,29 @@
++CXX      := g++
++CXXFLAGS := -std=c++11 -Wall -Wextra -g -O0
++LDFLAGS  := -lgtest -lgtest_main -lpq -lpthread
++
++BUILD_DIR := ../build/test
++INCLUDES  := -I../src -I../include
++
++TEST_SRCS := $(wildcard *.cpp)
++TEST_BINS := $(TEST_SRCS:%.cpp=$(BUILD_DIR)/%)
++
++# 被测源文件（不含 main*.cpp）
++SRC_OBJS  := $(BUILD_DIR)/handler.o $(BUILD_DIR)/service.o \
++             $(BUILD_DIR)/dao.o $(BUILD_DIR)/template.o $(BUILD_DIR)/config.o
++
++.PHONY: all clean
++
++all: $(TEST_BINS)
++	@for t in $(TEST_BINS); do echo "Running $$t..."; $$t || exit 1; done
++
++$(BUILD_DIR)/%: %.cpp $(SRC_OBJS)
++	@mkdir -p $(BUILD_DIR)
++	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $< $(SRC_OBJS) $(LDFLAGS)
++
++$(BUILD_DIR)/%.o: ../src/%.cpp
++	@mkdir -p $(BUILD_DIR)
++	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
++
++clean:
++	rm -rf $(BUILD_DIR)

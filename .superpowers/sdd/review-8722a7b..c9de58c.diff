@@ -1,0 +1,1722 @@
+# Review package: 8722a7b..c9de58c
+
+## Commits
+c9de58c Task 9: D scheme entry (FastCGI via libfcgi++)
+
+## Files changed
+ .gitignore             |   1 +
+ Makefile               |   2 +-
+ include/fastcgi.h      | 136 +++++++++++
+ include/fcgi_config.h  | 137 +++++++++++
+ include/fcgi_stdio.h   | 245 +++++++++++++++++++
+ include/fcgiapp.h      | 632 +++++++++++++++++++++++++++++++++++++++++++++++++
+ include/fcgimisc.h     |  38 +++
+ include/fcgio.h        | 151 ++++++++++++
+ include/fcgios.h       | 130 ++++++++++
+ lib/libfcgi++.a        | Bin 0 -> 23008 bytes
+ lib/libfcgi++.so       |   1 +
+ lib/libfcgi++.so.0     |   1 +
+ lib/libfcgi++.so.0.0.0 | Bin 0 -> 22696 bytes
+ lib/libfcgi.a          | Bin 0 -> 67670 bytes
+ lib/libfcgi.so         |   1 +
+ lib/libfcgi.so.0       |   1 +
+ lib/libfcgi.so.0.0.0   | Bin 0 -> 47272 bytes
+ lib/libpq.so           |   1 +
+ src/main_d.cpp         |  79 +++++++
+ 19 files changed, 1555 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/.gitignore b/.gitignore
+index c5ea136..03f794d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,9 +1,10 @@
+ build/
+ *.o
+ *.d
+ app_a
+ app_d
+ coverage.info
+ coverage_html/
+ .vscode/
+ *.swp
++*.deb
+diff --git a/Makefile b/Makefile
+index 5b41f47..98b1ff4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,21 +9,21 @@ BUILD_DIR := build
+ TARGET    := $(BUILD_DIR)/app_a
+ SRCS      := src/handler.cpp src/service.cpp src/dao.cpp src/template.cpp src/config.cpp
+ 
+ # 头文件路径
+ INCLUDES  := -Isrc -Iinclude
+ 
+ ifeq ($(SCHEME), D)
+   TARGET   := $(BUILD_DIR)/app_d
+   SRCS     += src/main_d.cpp
+   CXXFLAGS += -DBUILD_SCHEME_D
+-  LDFLAGS  += -lfcgi++
++  LDFLAGS  += -lfcgi -lfcgi++ -Llib -Wl,-rpath,lib
+ else
+   SRCS     += src/main_a.cpp
+ endif
+ 
+ OBJS := $(SRCS:src/%.cpp=$(BUILD_DIR)/%.o)
+ DEPS := $(OBJS:.o=.d)
+ 
+ .PHONY: all clean
+ 
+ all: $(TARGET)
+diff --git a/include/fastcgi.h b/include/fastcgi.h
+new file mode 100644
+index 0000000..d5b5468
+--- /dev/null
++++ b/include/fastcgi.h
+@@ -0,0 +1,136 @@
++/* 
++ * fastcgi.h --
++ *
++ *	Defines for the FastCGI protocol.
++ *
++ *
++ * Copyright (c) 1995-1996 Open Market, Inc.
++ *
++ * See the file "LICENSE.TERMS" for information on usage and redistribution
++ * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++ *
++ * $Id: fastcgi.h,v 1.1.1.1 1997/09/16 15:36:32 stanleyg Exp $
++ */
++
++#ifndef _FASTCGI_H
++#define _FASTCGI_H
++
++/*
++ * Listening socket file number
++ */
++#define FCGI_LISTENSOCK_FILENO 0
++
++typedef struct {
++    unsigned char version;
++    unsigned char type;
++    unsigned char requestIdB1;
++    unsigned char requestIdB0;
++    unsigned char contentLengthB1;
++    unsigned char contentLengthB0;
++    unsigned char paddingLength;
++    unsigned char reserved;
++} FCGI_Header;
++
++#define FCGI_MAX_LENGTH 0xffff
++
++/*
++ * Number of bytes in a FCGI_Header.  Future versions of the protocol
++ * will not reduce this number.
++ */
++#define FCGI_HEADER_LEN  8
++
++/*
++ * Value for version component of FCGI_Header
++ */
++#define FCGI_VERSION_1           1
++
++/*
++ * Values for type component of FCGI_Header
++ */
++#define FCGI_BEGIN_REQUEST       1
++#define FCGI_ABORT_REQUEST       2
++#define FCGI_END_REQUEST         3
++#define FCGI_PARAMS              4
++#define FCGI_STDIN               5
++#define FCGI_STDOUT              6
++#define FCGI_STDERR              7
++#define FCGI_DATA                8
++#define FCGI_GET_VALUES          9
++#define FCGI_GET_VALUES_RESULT  10
++#define FCGI_UNKNOWN_TYPE       11
++#define FCGI_MAXTYPE (FCGI_UNKNOWN_TYPE)
++
++/*
++ * Value for requestId component of FCGI_Header
++ */
++#define FCGI_NULL_REQUEST_ID     0
++
++
++typedef struct {
++    unsigned char roleB1;
++    unsigned char roleB0;
++    unsigned char flags;
++    unsigned char reserved[5];
++} FCGI_BeginRequestBody;
++
++typedef struct {
++    FCGI_Header header;
++    FCGI_BeginRequestBody body;
++} FCGI_BeginRequestRecord;
++
++/*
++ * Mask for flags component of FCGI_BeginRequestBody
++ */
++#define FCGI_KEEP_CONN  1
++
++/*
++ * Values for role component of FCGI_BeginRequestBody
++ */
++#define FCGI_RESPONDER  1
++#define FCGI_AUTHORIZER 2
++#define FCGI_FILTER     3
++
++
++typedef struct {
++    unsigned char appStatusB3;
++    unsigned char appStatusB2;
++    unsigned char appStatusB1;
++    unsigned char appStatusB0;
++    unsigned char protocolStatus;
++    unsigned char reserved[3];
++} FCGI_EndRequestBody;
++
++typedef struct {
++    FCGI_Header header;
++    FCGI_EndRequestBody body;
++} FCGI_EndRequestRecord;
++
++/*
++ * Values for protocolStatus component of FCGI_EndRequestBody
++ */
++#define FCGI_REQUEST_COMPLETE 0
++#define FCGI_CANT_MPX_CONN    1
++#define FCGI_OVERLOADED       2
++#define FCGI_UNKNOWN_ROLE     3
++
++
++/*
++ * Variable names for FCGI_GET_VALUES / FCGI_GET_VALUES_RESULT records
++ */
++#define FCGI_MAX_CONNS  "FCGI_MAX_CONNS"
++#define FCGI_MAX_REQS   "FCGI_MAX_REQS"
++#define FCGI_MPXS_CONNS "FCGI_MPXS_CONNS"
++
++
++typedef struct {
++    unsigned char type;    
++    unsigned char reserved[7];
++} FCGI_UnknownTypeBody;
++
++typedef struct {
++    FCGI_Header header;
++    FCGI_UnknownTypeBody body;
++} FCGI_UnknownTypeRecord;
++
++#endif	/* _FASTCGI_H */
++
+diff --git a/include/fcgi_config.h b/include/fcgi_config.h
+new file mode 100644
+index 0000000..3ecf5f3
+--- /dev/null
++++ b/include/fcgi_config.h
+@@ -0,0 +1,137 @@
++/* fcgi_config.h.  Generated from fcgi_config.h.in by configure.  */
++/* fcgi_config.h.in.  Generated from configure.ac by autoheader.  */
++
++/* Define to 1 if you have the <arpa/inet.h> header file. */
++#define HAVE_ARPA_INET_H 1
++
++/* Define to 1 if you have the <dlfcn.h> header file. */
++#define HAVE_DLFCN_H 1
++
++/* Define if there's a fileno() prototype in stdio.h */
++#define HAVE_FILENO_PROTO 1
++
++/* Define if the fpos_t typedef is in stdio.h */
++#define HAVE_FPOS 1
++
++/* Define to 1 if you have the <inttypes.h> header file. */
++#define HAVE_INTTYPES_H 1
++
++/* Define if cin/cout/cerr has a streambuf assignment operator */
++/* #undef HAVE_IOSTREAM_WITHASSIGN_STREAMBUF */
++
++/* Define to 1 if you have the `nsl' library (-lnsl). */
++/* #undef HAVE_LIBNSL */
++
++/* Define to 1 if you have the `socket' library (-lsocket). */
++/* #undef HAVE_LIBSOCKET */
++
++/* Define to 1 if you have the <limits.h> header file. */
++#define HAVE_LIMITS_H 1
++
++/* Define to 1 if you have the <netdb.h> header file. */
++#define HAVE_NETDB_H 1
++
++/* Define to 1 if you have the <netinet/in.h> header file. */
++#define HAVE_NETINET_IN_H 1
++
++/* Define if you have POSIX threads libraries and header files. */
++/* #undef HAVE_PTHREAD */
++
++/* Define if sockaddr_un in sys/un.h contains a sun_len component */
++/* #undef HAVE_SOCKADDR_UN_SUN_LEN */
++
++/* Define if the socklen_t typedef is in sys/socket.h */
++/* #undef HAVE_SOCKLEN */
++
++/* Define to 1 if you have the <stdint.h> header file. */
++#define HAVE_STDINT_H 1
++
++/* Define to 1 if you have the <stdio.h> header file. */
++#define HAVE_STDIO_H 1
++
++/* Define to 1 if you have the <stdlib.h> header file. */
++#define HAVE_STDLIB_H 1
++
++/* Define if char_type is defined in the context of streambuf */
++#define HAVE_STREAMBUF_CHAR_TYPE 1
++
++/* Define to 1 if you have the `strerror' function. */
++#define HAVE_STRERROR 1
++
++/* Define to 1 if you have the <strings.h> header file. */
++#define HAVE_STRINGS_H 1
++
++/* Define to 1 if you have the <string.h> header file. */
++#define HAVE_STRING_H 1
++
++/* Define to 1 if you have the <sys/param.h> header file. */
++#define HAVE_SYS_PARAM_H 1
++
++/* Define to 1 if you have the <sys/socket.h> header file. */
++#define HAVE_SYS_SOCKET_H 1
++
++/* Define to 1 if you have the <sys/stat.h> header file. */
++#define HAVE_SYS_STAT_H 1
++
++/* Define to 1 if you have the <sys/time.h> header file. */
++#define HAVE_SYS_TIME_H 1
++
++/* Define to 1 if you have the <sys/types.h> header file. */
++#define HAVE_SYS_TYPES_H 1
++
++/* Define to 1 if you have the <unistd.h> header file. */
++#define HAVE_UNISTD_H 1
++
++/* Define if va_arg(arg, long double) crashes the compiler */
++/* #undef HAVE_VA_ARG_LONG_DOUBLE_BUG */
++
++/* Define to the sub-directory where libtool stores uninstalled libraries. */
++#define LT_OBJDIR ".libs/"
++
++/* Name of package */
++#define PACKAGE "fcgi"
++
++/* Define to the address where bug reports for this package should be sent. */
++#define PACKAGE_BUGREPORT ""
++
++/* Define to the full name of this package. */
++#define PACKAGE_NAME "fcgi"
++
++/* Define to the full name and version of this package. */
++#define PACKAGE_STRING "fcgi 2.4.2"
++
++/* Define to the one symbol short name of this package. */
++#define PACKAGE_TARNAME "fcgi"
++
++/* Define to the home page for this package. */
++#define PACKAGE_URL ""
++
++/* Define to the version of this package. */
++#define PACKAGE_VERSION "2.4.2"
++
++/* Define to the necessary symbol if this constant uses a non-standard name on
++   your system. */
++/* #undef PTHREAD_CREATE_JOINABLE */
++
++/* Define to 1 if all of the C90 standard headers exist (not just the ones
++   required in a freestanding environment). This macro is provided for
++   backward compatibility; new code need not use it. */
++#define STDC_HEADERS 1
++
++/* Define if cross-process locking is required by accept() */
++/* #undef USE_LOCKING */
++
++/* Version number of package */
++#define VERSION "2.4.2"
++
++/* Define to empty if `const' does not conform to ANSI C. */
++/* #undef const */
++
++/* Define to `__inline__' or `__inline' if that's what the C compiler
++   calls it, or to nothing if 'inline' is not supported under any name.  */
++#ifndef __cplusplus
++/* #undef inline */
++#endif
++
++/* Define to `int' if <sys/types.h> does not define. */
++/* #undef ssize_t */
+diff --git a/include/fcgi_stdio.h b/include/fcgi_stdio.h
+new file mode 100644
+index 0000000..6d242f3
+--- /dev/null
++++ b/include/fcgi_stdio.h
+@@ -0,0 +1,245 @@
++/* 
++ * fcgi_stdio.h --
++ *
++ *      FastCGI-stdio compatibility package
++ *
++ *
++ * Copyright (c) 1996 Open Market, Inc.
++ *
++ * See the file "LICENSE.TERMS" for information on usage and redistribution
++ * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++ *
++ * $Id: fcgi_stdio.h,v 1.5 2001/06/22 13:21:15 robs Exp $
++ */
++
++#ifndef _FCGI_STDIO
++#define _FCGI_STDIO 1
++
++#include <stdio.h>
++#include <sys/types.h>
++#include "fcgiapp.h"
++
++#if defined (c_plusplus) || defined (__cplusplus)
++extern "C" {
++#endif
++
++#ifndef DLLAPI
++#if defined (_WIN32) && defined (_MSC_VER)
++#define DLLAPI __declspec(dllimport)
++#else
++#define DLLAPI
++#endif
++#endif
++
++/*
++ * Wrapper type for FILE
++ */
++
++typedef struct {
++    FILE *stdio_stream;
++    FCGX_Stream *fcgx_stream;
++} FCGI_FILE;
++
++/*
++ * The four new functions and two new macros
++ */
++
++DLLAPI int FCGI_Accept(void);
++DLLAPI void FCGI_Finish(void);
++DLLAPI int FCGI_StartFilterData(void);
++DLLAPI void FCGI_SetExitStatus(int status);
++
++#define FCGI_ToFILE(fcgi_file) (fcgi_file->stdio_stream)
++#define FCGI_ToFcgiStream(fcgi_file) (fcgi_file->fcgx_stream)
++
++/*
++ * Wrapper stdin, stdout, and stderr variables, set up by FCGI_Accept()
++ */
++
++DLLAPI extern	FCGI_FILE	_fcgi_sF[];
++#define FCGI_stdin	(&_fcgi_sF[0])
++#define FCGI_stdout	(&_fcgi_sF[1])
++#define FCGI_stderr	(&_fcgi_sF[2])
++
++/*
++ * Wrapper function prototypes, grouped according to sections
++ * of Harbison & Steele, "C: A Reference Manual," fourth edition,
++ * Prentice-Hall, 1995.
++ */
++
++DLLAPI void FCGI_perror(const char *str);
++
++DLLAPI FCGI_FILE *FCGI_fopen(const char *path, const char *mode);
++DLLAPI int        FCGI_fclose(FCGI_FILE *fp);
++DLLAPI int        FCGI_fflush(FCGI_FILE *fp);
++DLLAPI FCGI_FILE *FCGI_freopen(const char *path, const char *mode, FCGI_FILE *fp);
++
++DLLAPI int        FCGI_setvbuf(FCGI_FILE *fp, char *buf, int bufmode, size_t size);
++DLLAPI void       FCGI_setbuf(FCGI_FILE *fp, char *buf);
++
++DLLAPI int        FCGI_fseek(FCGI_FILE *fp, long offset, int whence);
++DLLAPI int        FCGI_ftell(FCGI_FILE *fp);
++DLLAPI void       FCGI_rewind(FCGI_FILE *fp);
++#ifdef HAVE_FPOS
++DLLAPI int        FCGI_fgetpos(FCGI_FILE *fp, fpos_t *pos);
++DLLAPI int        FCGI_fsetpos(FCGI_FILE *fp, const fpos_t *pos);
++#endif
++DLLAPI int        FCGI_fgetc(FCGI_FILE *fp);
++DLLAPI int        FCGI_getchar(void);
++DLLAPI int        FCGI_ungetc(int c, FCGI_FILE *fp);
++
++DLLAPI char      *FCGI_fgets(char *str, int size, FCGI_FILE *fp);
++DLLAPI char      *FCGI_gets(char *str);
++
++/*
++ * Not yet implemented
++ *
++ * int        FCGI_fscanf(FCGI_FILE *fp, const char *format, ...);
++ * int        FCGI_scanf(const char *format, ...);
++ *
++ */
++
++DLLAPI int        FCGI_fputc(int c, FCGI_FILE *fp);
++DLLAPI int        FCGI_putchar(int c);
++
++DLLAPI int        FCGI_fputs(const char *str, FCGI_FILE *fp);
++DLLAPI int        FCGI_puts(const char *str);
++
++DLLAPI int        FCGI_fprintf(FCGI_FILE *fp, const char *format, ...);
++DLLAPI int        FCGI_printf(const char *format, ...);
++
++DLLAPI int        FCGI_vfprintf(FCGI_FILE *fp, const char *format, va_list ap);
++DLLAPI int        FCGI_vprintf(const char *format, va_list ap);
++
++DLLAPI size_t     FCGI_fread(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp);
++DLLAPI size_t     FCGI_fwrite(void *ptr, size_t size, size_t nmemb, FCGI_FILE *fp);
++
++DLLAPI int        FCGI_feof(FCGI_FILE *fp);
++DLLAPI int        FCGI_ferror(FCGI_FILE *fp);
++DLLAPI void       FCGI_clearerr(FCGI_FILE *fp);
++
++DLLAPI FCGI_FILE *FCGI_tmpfile(void);
++
++DLLAPI int        FCGI_fileno(FCGI_FILE *fp);
++DLLAPI FCGI_FILE *FCGI_fdopen(int fd, const char *mode);
++DLLAPI FCGI_FILE *FCGI_popen(const char *cmd, const char *type);
++DLLAPI int        FCGI_pclose(FCGI_FILE *);
++
++/*
++ * The remaining definitions are for application programs,
++ * not for fcgi_stdio.c
++ */
++
++#ifndef NO_FCGI_DEFINES
++
++/*
++ * Replace standard types, variables, and functions with FastCGI wrappers.
++ * Use undef in case a macro is already defined.
++ */
++
++#undef  FILE
++#define	FILE     FCGI_FILE
++
++#undef  stdin
++#define	stdin    FCGI_stdin
++#undef  stdout
++#define	stdout   FCGI_stdout
++#undef  stderr
++#define	stderr   FCGI_stderr
++
++#undef  perror
++#define	perror   FCGI_perror
++
++#undef  fopen
++#define	fopen    FCGI_fopen
++#undef  fclose
++#define	fclose   FCGI_fclose
++#undef  fflush
++#define	fflush   FCGI_fflush
++#undef  freopen
++#define	freopen  FCGI_freopen
++
++#undef  setvbuf
++#define	setvbuf  FCGI_setvbuf
++#undef  setbuf
++#define	setbuf   FCGI_setbuf
++
++#undef  fseek
++#define fseek    FCGI_fseek
++#undef  ftell
++#define ftell    FCGI_ftell
++#undef  rewind
++#define rewind   FCGI_rewind
++#undef  fgetpos
++#define fgetpos  FCGI_fgetpos
++#undef  fsetpos
++#define fsetpos  FCGI_fsetpos
++
++#undef  fgetc
++#define	fgetc    FCGI_fgetc
++#undef  getc
++#define getc     FCGI_fgetc
++#undef  getchar
++#define	getchar  FCGI_getchar
++#undef  ungetc
++#define ungetc   FCGI_ungetc
++
++#undef  fgets
++#define fgets    FCGI_fgets
++#undef  gets
++#define	gets     FCGI_gets
++
++#undef  fputc
++#define fputc    FCGI_fputc
++#undef  putc
++#define putc     FCGI_fputc
++#undef  putchar
++#define	putchar  FCGI_putchar
++
++#undef  fputs
++#define	fputs    FCGI_fputs
++#undef  puts
++#define	puts     FCGI_puts
++
++#undef  fprintf
++#define	fprintf  FCGI_fprintf
++#undef  printf
++#define	printf   FCGI_printf
++
++#undef  vfprintf
++#define vfprintf FCGI_vfprintf
++#undef  vprintf
++#define vprintf  FCGI_vprintf
++
++#undef  fread
++#define	fread    FCGI_fread
++#undef  fwrite
++#define fwrite   FCGI_fwrite
++
++#undef  feof
++#define	feof     FCGI_feof
++#undef  ferror
++#define ferror   FCGI_ferror
++#undef  clearerr
++#define	clearerr FCGI_clearerr
++
++#undef  tmpfile
++#define tmpfile  FCGI_tmpfile
++
++#undef  fileno
++#define fileno   FCGI_fileno
++#undef  fdopen
++#define fdopen   FCGI_fdopen
++#undef  popen
++#define popen    FCGI_popen
++#undef  pclose
++#define	pclose   FCGI_pclose
++
++#endif /* NO_FCGI_DEFINES */
++
++#if defined (__cplusplus) || defined (c_plusplus)
++} /* terminate extern "C" { */
++#endif
++
++#endif /* _FCGI_STDIO */
++
+diff --git a/include/fcgiapp.h b/include/fcgiapp.h
+new file mode 100644
+index 0000000..8cadde1
+--- /dev/null
++++ b/include/fcgiapp.h
+@@ -0,0 +1,632 @@
++/*
++ * fcgiapp.h --
++ *
++ *      Definitions for FastCGI application server programs
++ *
++ *
++ * Copyright (c) 1996 Open Market, Inc.
++ *
++ * See the file "LICENSE.TERMS" for information on usage and redistribution
++ * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++ *
++ * $Id: fcgiapp.h,v 1.14 2003/06/22 00:16:44 robs Exp $
++ */
++
++#ifndef _FCGIAPP_H
++#define _FCGIAPP_H
++
++/* Hack to see if we are building Tcl - Tcl needs varargs not stdarg */
++#ifndef TCL_LIBRARY
++#include <stdarg.h>
++#else
++#include <varargs.h>
++#endif
++
++#ifndef DLLAPI
++#if defined (_WIN32) && defined (_MSC_VER)
++#define DLLAPI __declspec(dllimport)
++#else
++#define DLLAPI
++#endif
++#endif
++
++#if defined (c_plusplus) || defined (__cplusplus)
++extern "C" {
++#endif
++
++/*
++ * Error codes.  Assigned to avoid conflict with EOF and errno(2).
++ */
++#define FCGX_UNSUPPORTED_VERSION -2
++#define FCGX_PROTOCOL_ERROR -3
++#define FCGX_PARAMS_ERROR -4
++#define FCGX_CALL_SEQ_ERROR -5
++
++/*
++ * This structure defines the state of a FastCGI stream.
++ * Streams are modeled after the FILE type defined in stdio.h.
++ * (We wouldn't need our own if platform vendors provided a
++ * standard way to subclass theirs.)
++ * The state of a stream is private and should only be accessed
++ * by the procedures defined below.
++ */
++typedef struct FCGX_Stream {
++    unsigned char *rdNext;    /* reader: first valid byte
++                               * writer: equals stop */
++    unsigned char *wrNext;    /* writer: first free byte
++                               * reader: equals stop */
++    unsigned char *stop;      /* reader: last valid byte + 1
++                               * writer: last free byte + 1 */
++    unsigned char *stopUnget; /* reader: first byte of current buffer
++                               * fragment, for ungetc
++                               * writer: undefined */
++    int isReader;
++    int isClosed;
++    int wasFCloseCalled;
++    int FCGI_errno;                /* error status */
++    void (*fillBuffProc) (struct FCGX_Stream *stream);
++    void (*emptyBuffProc) (struct FCGX_Stream *stream, int doClose);
++    void *data;
++} FCGX_Stream;
++
++/*
++ * An environment (as defined by environ(7)): A NULL-terminated array
++ * of strings, each string having the form name=value.
++ */
++typedef char **FCGX_ParamArray;
++
++/*
++ * FCGX_Request Flags
++ *
++ * Setting FCGI_FAIL_ACCEPT_ON_INTR prevents FCGX_Accept() from
++ * restarting upon being interrupted.
++ */
++#define FCGI_FAIL_ACCEPT_ON_INTR	1
++
++/*
++ * FCGX_Request -- State associated with a request.
++ *
++ * Its exposed for API simplicity, I expect parts of it to change!
++ */
++typedef struct FCGX_Request {
++    int requestId;            /* valid if isBeginProcessed */
++    int role;
++    FCGX_Stream *in;
++    FCGX_Stream *out;
++    FCGX_Stream *err;
++    char **envp;
++
++    /* Don't use anything below here */
++
++    struct Params *paramsPtr;
++    int ipcFd;               /* < 0 means no connection */
++    int isBeginProcessed;     /* FCGI_BEGIN_REQUEST seen */
++    int keepConnection;       /* don't close ipcFd at end of request */
++    int appStatus;
++    int nWriters;             /* number of open writers (0..2) */
++    int flags;
++    int listen_sock;
++    int detached;
++} FCGX_Request;
++
++
++/*
++ *======================================================================
++ * Control
++ *======================================================================
++ */
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_IsCGI --
++ *
++ *      Returns TRUE iff this process appears to be a CGI process
++ *      rather than a FastCGI process.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_IsCGI(void);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Init --
++ *
++ *      Initialize the FCGX library.  Call in multi-threaded apps
++ *      before calling FCGX_Accept_r().
++ *
++ *      Returns 0 upon success.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_Init(void);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_OpenSocket --
++ *
++ *	Create a FastCGI listen socket.
++ *
++ *	path is the Unix domain socket (named pipe for WinNT), or a colon
++ *	followed by a port number.  e.g. "/tmp/fastcgi/mysocket", ":5000"
++ *
++ *	backlog is the listen queue depth used in the listen() call.
++ *
++ *  Returns the socket's file descriptor or -1 on error.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_OpenSocket(const char *path, int backlog);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_InitRequest --
++ *
++ *	Initialize a FCGX_Request for use with FCGX_Accept_r().
++ *
++ * 	sock is a file descriptor returned by FCGX_OpenSocket() or 0 (default).
++ * 	The only supported flag at this time is FCGI_FAIL_ON_INTR.
++ *
++ * 	Returns 0 upon success.
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_InitRequest(FCGX_Request *request, int sock, int flags);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Accept_r --
++ *
++ *      Accept a new request (multi-thread safe).  Be sure to call
++ * 	FCGX_Init() first.
++ *
++ * Results:
++ *	0 for successful call, -1 for error.
++ *
++ * Side effects:
++ *
++ *      Finishes the request accepted by (and frees any
++ *      storage allocated by) the previous call to FCGX_Accept.
++ *      Creates input, output, and error streams and
++ *      assigns them to *in, *out, and *err respectively.
++ *      Creates a parameters data structure to be accessed
++ *      via getenv(3) (if assigned to environ) or by FCGX_GetParam
++ *      and assigns it to *envp.
++ *
++ *      DO NOT retain pointers to the envp array or any strings
++ *      contained in it (e.g. to the result of calling FCGX_GetParam),
++ *      since these will be freed by the next call to FCGX_Finish
++ *      or FCGX_Accept.
++ *
++ *	DON'T use the FCGX_Request, its structure WILL change.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_Accept_r(FCGX_Request *request);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Finish_r --
++ *
++ *      Finish the request (multi-thread safe).
++ *
++ * Side effects:
++ *
++ *      Finishes the request accepted by (and frees any
++ *      storage allocated by) the previous call to FCGX_Accept.
++ *
++ *      DO NOT retain pointers to the envp array or any strings
++ *      contained in it (e.g. to the result of calling FCGX_GetParam),
++ *      since these will be freed by the next call to FCGX_Finish
++ *      or FCGX_Accept.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_Finish_r(FCGX_Request *request);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Free --
++ *
++ *      Free the memory and, if close is true, 
++ *	    IPC FD associated with the request (multi-thread safe).
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_Free(FCGX_Request * request, int close);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Accept --
++ *
++ *      Accept a new request (NOT multi-thread safe).
++ *
++ * Results:
++ *	0 for successful call, -1 for error.
++ *
++ * Side effects:
++ *
++ *      Finishes the request accepted by (and frees any
++ *      storage allocated by) the previous call to FCGX_Accept.
++ *      Creates input, output, and error streams and
++ *      assigns them to *in, *out, and *err respectively.
++ *      Creates a parameters data structure to be accessed
++ *      via getenv(3) (if assigned to environ) or by FCGX_GetParam
++ *      and assigns it to *envp.
++ *
++ *      DO NOT retain pointers to the envp array or any strings
++ *      contained in it (e.g. to the result of calling FCGX_GetParam),
++ *      since these will be freed by the next call to FCGX_Finish
++ *      or FCGX_Accept.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_Accept(
++        FCGX_Stream **in,
++        FCGX_Stream **out,
++        FCGX_Stream **err,
++        FCGX_ParamArray *envp);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_Finish --
++ *
++ *      Finish the current request (NOT multi-thread safe).
++ *
++ * Side effects:
++ *
++ *      Finishes the request accepted by (and frees any
++ *      storage allocated by) the previous call to FCGX_Accept.
++ *
++ *      DO NOT retain pointers to the envp array or any strings
++ *      contained in it (e.g. to the result of calling FCGX_GetParam),
++ *      since these will be freed by the next call to FCGX_Finish
++ *      or FCGX_Accept.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_Finish(void);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_StartFilterData --
++ *
++ *      stream is an input stream for a FCGI_FILTER request.
++ *      stream is positioned at EOF on FCGI_STDIN.
++ *      Repositions stream to the start of FCGI_DATA.
++ *      If the preconditions are not met (e.g. FCGI_STDIN has not
++ *      been read to EOF) sets the stream error code to
++ *      FCGX_CALL_SEQ_ERROR.
++ *
++ * Results:
++ *      0 for a normal return, < 0 for error
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_StartFilterData(FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_SetExitStatus --
++ *
++ *      Sets the exit status for stream's request. The exit status
++ *      is the status code the request would have exited with, had
++ *      the request been run as a CGI program.  You can call
++ *      SetExitStatus several times during a request; the last call
++ *      before the request ends determines the value.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_SetExitStatus(int status, FCGX_Stream *stream);
++
++/*
++ *======================================================================
++ * Parameters
++ *======================================================================
++ */
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_GetParam -- obtain value of FCGI parameter in environment
++ *
++ *
++ * Results:
++ *	Value bound to name, NULL if name not present in the
++ *      environment envp.  Caller must not mutate the result
++ *      or retain it past the end of this request.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI char *FCGX_GetParam(const char *name, FCGX_ParamArray envp);
++
++/*
++ *======================================================================
++ * Readers
++ *======================================================================
++ */
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_GetChar --
++ *
++ *      Reads a byte from the input stream and returns it.
++ *
++ * Results:
++ *	The byte, or EOF (-1) if the end of input has been reached.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_GetChar(FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_UnGetChar --
++ *
++ *      Pushes back the character c onto the input stream.  One
++ *      character of pushback is guaranteed once a character
++ *      has been read.  No pushback is possible for EOF.
++ *
++ * Results:
++ *	Returns c if the pushback succeeded, EOF if not.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_UnGetChar(int c, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_GetStr --
++ *
++ *      Reads up to n consecutive bytes from the input stream
++ *      into the character array str.  Performs no interpretation
++ *      of the input bytes.
++ *
++ * Results:
++ *	Number of bytes read.  If result is smaller than n,
++ *      the end of input has been reached.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_GetStr(char *str, int n, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_GetLine --
++ *
++ *      Reads up to n-1 consecutive bytes from the input stream
++ *      into the character array str.  Stops before n-1 bytes
++ *      have been read if '\n' or EOF is read.  The terminating '\n'
++ *      is copied to str.  After copying the last byte into str,
++ *      stores a '\0' terminator.
++ *
++ * Results:
++ *	NULL if EOF is the first thing read from the input stream,
++ *      str otherwise.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI char *FCGX_GetLine(char *str, int n, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_HasSeenEOF --
++ *
++ *      Returns EOF if end-of-file has been detected while reading
++ *      from stream; otherwise returns 0.
++ *
++ *      Note that FCGX_HasSeenEOF(s) may return 0, yet an immediately
++ *      following FCGX_GetChar(s) may return EOF.  This function, like
++ *      the standard C stdio function feof, does not provide the
++ *      ability to peek ahead.
++ *
++ * Results:
++ *	EOF if end-of-file has been detected, 0 if not.
++ *
++ *----------------------------------------------------------------------
++ */
++
++DLLAPI  int FCGX_HasSeenEOF(FCGX_Stream *stream);
++
++/*
++ *======================================================================
++ * Writers
++ *======================================================================
++ */
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_PutChar --
++ *
++ *      Writes a byte to the output stream.
++ *
++ * Results:
++ *	The byte, or EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_PutChar(int c, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_PutStr --
++ *
++ *      Writes n consecutive bytes from the character array str
++ *      into the output stream.  Performs no interpretation
++ *      of the output bytes.
++ *
++ * Results:
++ *      Number of bytes written (n) for normal return,
++ *      EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_PutStr(const char *str, int n, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_PutS --
++ *
++ *      Writes a null-terminated character string to the output stream.
++ *
++ * Results:
++ *      number of bytes written for normal return,
++ *      EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_PutS(const char *str, FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_FPrintF, FCGX_VFPrintF --
++ *
++ *      Performs printf-style output formatting and writes the results
++ *      to the output stream.
++ *
++ * Results:
++ *      number of bytes written for normal return,
++ *      EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_FPrintF(FCGX_Stream *stream, const char *format, ...);
++
++DLLAPI int FCGX_VFPrintF(FCGX_Stream *stream, const char *format, va_list arg);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_FFlush --
++ *
++ *      Flushes any buffered output.
++ *
++ *      Server-push is a legitimate application of FCGX_FFlush.
++ *      Otherwise, FCGX_FFlush is not very useful, since FCGX_Accept
++ *      does it implicitly.  Calling FCGX_FFlush in non-push applications
++ *      results in extra writes and therefore reduces performance.
++ *
++ * Results:
++ *      EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_FFlush(FCGX_Stream *stream);
++
++/*
++ *======================================================================
++ * Both Readers and Writers
++ *======================================================================
++ */
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_FClose --
++ *
++ *      Closes the stream.  For writers, flushes any buffered
++ *      output.
++ *
++ *      Close is not a very useful operation since FCGX_Accept
++ *      does it implicitly.  Closing the out stream before the
++ *      err stream results in an extra write if there's nothing
++ *      in the err stream, and therefore reduces performance.
++ *
++ * Results:
++ *      EOF (-1) if an error occurred.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_FClose(FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_GetError --
++ *
++ *      Return the stream error code.  0 means no error, > 0
++ *      is an errno(2) error, < 0 is an FastCGI error.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI int FCGX_GetError(FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_ClearError --
++ *
++ *      Clear the stream error code and end-of-file indication.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_ClearError(FCGX_Stream *stream);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_CreateWriter --
++ *
++ *      Create a FCGX_Stream (used by cgi-fcgi).  This shouldn't 
++ *      be needed by a FastCGI applictaion.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI FCGX_Stream *FCGX_CreateWriter(
++        int socket,
++        int requestId,
++        int bufflen,
++        int streamType);
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * FCGX_FreeStream --
++ *
++ *      Free a FCGX_Stream (used by cgi-fcgi).  This shouldn't 
++ *      be needed by a FastCGI applictaion.
++ *
++ *----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_FreeStream(FCGX_Stream **stream);
++
++/* ----------------------------------------------------------------------
++ *
++ *  Prevent the lib from accepting any new requests.  Signal handler safe.
++ *
++ * ----------------------------------------------------------------------
++ */
++DLLAPI void FCGX_ShutdownPending(void);
++
++
++/*
++ *  Attach/Detach an accepted request from its listen socket.
++ *  XXX This is not fully implemented at this time (patch welcome).
++ */
++DLLAPI int FCGX_Attach(FCGX_Request * r);
++DLLAPI int FCGX_Detach(FCGX_Request * r);
++
++
++#if defined (__cplusplus) || defined (c_plusplus)
++} /* terminate extern "C" { */
++#endif
++
++#endif	/* _FCGIAPP_H */
+diff --git a/include/fcgimisc.h b/include/fcgimisc.h
+new file mode 100644
+index 0000000..0464455
+--- /dev/null
++++ b/include/fcgimisc.h
+@@ -0,0 +1,38 @@
++/* 
++ * fcgimisc.h --
++ *
++ *      Miscellaneous definitions
++ *
++ *
++ * Copyright (c) 1996 Open Market, Inc.
++ *
++ * See the file "LICENSE.TERMS" for information on usage and redistribution
++ * of this file, and for a DISCLAIMER OF ALL WARRANTIES.
++ *
++ * $Id: fcgimisc.h,v 1.3 2001/06/18 14:25:47 robs Exp $
++ */
++
++#ifndef _FCGIMISC_H
++#define _FCGIMISC_H
++
++#ifndef FALSE
++#define FALSE (0)
++#endif
++
++#ifndef TRUE
++#define TRUE  (1)
++#endif
++
++#ifndef min
++#define min(a,b) ((a) < (b) ? (a) : (b))
++#endif
++
++#ifndef max
++#define max(a,b) ((a) > (b) ? (a) : (b))
++#endif
++
++#ifndef ASSERT
++#define ASSERT(assertion) assert(assertion)
++#endif
++
++#endif	/* _FCGIMISC_H */
+diff --git a/include/fcgio.h b/include/fcgio.h
+new file mode 100644
+index 0000000..ce8b930
+--- /dev/null
++++ b/include/fcgio.h
+@@ -0,0 +1,151 @@
++//
++// Provides support for FastCGI via C++ iostreams.
++//
++// $Id: fcgio.h,v 1.15 2002/02/25 13:16:11 robs Exp $
++//
++// This work is based on routines written by George Feinberg. They
++// have been mostly re-written and extensively changed by
++// Michael Richards.
++//
++// Rewritten again with bug fixes and numerous enhancements by
++// Michael Shell.
++// 
++// And rewritten again by Rob Saccoccio. 
++//
++// Special Thanks to Dietmar Kuehl for his help and the numerous custom
++// streambuf examples on his web site.
++//
++// Copyright (c) 2000 Tux the Linux Penguin
++// Copyright (c) 2001 Rob Saccoccio and Chelsea Networks
++//
++// You are free to use this software without charge or royalty
++// as long as this notice is not removed or altered, and recognition
++// is given to the author(s)
++//
++// This code is offered as-is without any warranty either expressed or
++// implied; without even the implied warranty of MERCHANTABILITY or
++// FITNESS FOR A PARTICULAR PURPOSE.  If it breaks, you get to keep 
++// both halves.
++
++#ifndef FCGIO_H
++#define FCGIO_H
++
++#include <iostream>
++
++#include "fcgiapp.h"
++
++#ifndef DLLAPI
++#if defined (_WIN32) && defined (_MSC_VER)
++#define DLLAPI __declspec(dllimport)
++#else
++#define DLLAPI
++#endif
++#endif
++
++#if ! HAVE_STREAMBUF_CHAR_TYPE
++typedef char char_type;
++#endif
++
++/*
++ *  fcgi_streambuf
++ */
++class DLLAPI fcgi_streambuf : public std::streambuf
++{
++public:
++
++    // Note that if no buf is assigned (the default), iostream methods
++    // such as peek(), unget() and putback() will fail.  If a buf is
++    // assigned, I/O is a bit less efficient and output streams will
++    // have to be flushed (or the streambuf destroyed) before the next 
++    // call to "accept".
++    fcgi_streambuf(FCGX_Stream * fcgx, char * buf, int len);
++    
++    fcgi_streambuf(char_type * buf, std::streamsize len);
++    
++    fcgi_streambuf(FCGX_Stream * fcgx = 0);
++
++    ~fcgi_streambuf(void);
++
++    int attach(FCGX_Stream * fcgx);
++
++protected:
++
++    // Consume the put area (if buffered) and c (if c is not EOF).
++    virtual int overflow(int);
++
++    // Flush the put area (if buffered) and the FCGX buffer to the client.
++    virtual int sync();
++
++    // Remove and return the current character.
++    virtual int uflow();
++
++    // Fill the get area (if buffered) and return the current character.
++    virtual int underflow();
++
++    // Use a buffer.  The only reasons that a buffer would be useful is
++    // to support the use of the unget()/putback() or seek() methods.  Using
++    // a buffer will result in less efficient I/O.  Note: the underlying
++    // FastCGI library (FCGX) maintains its own input and output buffers.  
++    virtual std::streambuf * setbuf(char_type * buf, std::streamsize len);
++
++    virtual std::streamsize xsgetn(char_type * s, std::streamsize n);
++    virtual std::streamsize xsputn(const char_type * s, std::streamsize n);
++
++private:
++
++    FCGX_Stream * fcgx;
++
++    // buf is just handy to have around
++    char_type * buf;
++
++    // this isn't kept by the base class
++    std::streamsize bufsize;
++    
++    void init(FCGX_Stream * fcgx, char_type * buf, std::streamsize bufsize);
++
++    void reset(void);
++};
++
++/*
++ *  fcgi_istream - deprecated
++ */
++class DLLAPI fcgi_istream : public std::istream
++{
++public:
++
++    // deprecated
++    fcgi_istream(FCGX_Stream * fcgx = 0);
++    
++    // deprecated
++    ~fcgi_istream(void) {}
++
++    // deprecated
++    virtual void attach(FCGX_Stream * fcgx);
++
++private:
++
++    fcgi_streambuf fcgi_strmbuf;
++};
++
++/*
++ *  fcgi_ostream - deprecated
++ */
++class DLLAPI fcgi_ostream : public std::ostream
++{
++public:
++    
++    // deprecated
++    fcgi_ostream(FCGX_Stream * fcgx = 0);
++    
++    // deprecated
++    ~fcgi_ostream(void) {}
++
++    // deprecated
++    virtual void attach(FCGX_Stream *fcgx);
++
++private:
++
++    fcgi_streambuf fcgi_strmbuf;
++};
++
++#endif /* FCGIO_H */
+diff --git a/include/fcgios.h b/include/fcgios.h
+new file mode 100644
+index 0000000..2069731
+--- /dev/null
++++ b/include/fcgios.h
+@@ -0,0 +1,130 @@
++/*
++ * fcgios.h --
++ *
++ *      Description of file.
++ *
++ *
++ *  Copyright (c) 1996 Open Market, Inc.
++ *  All rights reserved.
++ *
++ *  This file contains proprietary and confidential information and
++ *  remains the unpublished property of Open Market, Inc. Use,
++ *  disclosure, or reproduction is prohibited except as permitted by
++ *  express written license agreement with Open Market, Inc.
++ *
++ *  Bill Snapper
++ *  snapper@openmarket.com
++ */
++#ifndef _FCGIOS_H
++#define _FCGIOS_H
++
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN 
++#include <windows.h>
++#include <winsock2.h>
++#endif
++
++#include "fcgi_config.h"
++
++#ifdef HAVE_SYS_TIME_H
++#include <sys/time.h>
++#endif
++
++#ifdef HAVE_SYS_TYPES_H
++#include <sys/types.h>
++#endif
++
++#if defined (c_plusplus) || defined (__cplusplus)
++extern "C" {
++#endif
++
++#ifdef _WIN32
++#define OS_Errno GetLastError()
++#define OS_SetErrno(err) SetLastError(err)
++#ifndef O_NONBLOCK
++#define O_NONBLOCK     0x0004  /* no delay */
++#endif
++#else /* !_WIN32 */
++#define OS_Errno errno
++#define OS_SetErrno(err) errno = (err)
++#endif /* !_WIN32 */
++
++#ifndef DLLAPI
++#if defined (_WIN32) && defined (_MSC_VER)
++#define DLLAPI __declspec(dllimport)
++#else
++#define DLLAPI
++#endif
++#endif
++
++
++/* This is the initializer for a "struct timeval" used in a select() call
++ * right after a new request is accept()ed to determine readablity.  Its
++ * a drop-dead timer.  Its only used for AF_UNIX sockets (not TCP sockets).
++ * Its a workaround for a kernel bug in Linux 2.0.x and SCO Unixware.
++ * Making this as small as possible, yet remain reliable would be best.
++ * 2 seconds is very conservative.  0,0 is not reliable.  The shorter the
++ * timeout, the faster request processing will recover.  The longer the
++ * timeout, the more likely this application being "busy" will cause other
++ * requests to abort and cause more dead sockets that need this timeout. */
++#define READABLE_UNIX_FD_DROP_DEAD_TIMEVAL 2,0
++
++#ifndef STDIN_FILENO
++#define STDIN_FILENO  0
++#endif
++
++#ifndef STDOUT_FILENO
++#define STDOUT_FILENO 1
++#endif
++
++#ifndef STDERR_FILENO
++#define STDERR_FILENO 2
++#endif
++
++#ifndef MAXPATHLEN
++#define MAXPATHLEN 1024
++#endif
++
++#ifndef X_OK
++#define X_OK       0x01
++#endif
++
++#ifndef _CLIENTDATA
++#   if defined(__STDC__) || defined(__cplusplus)
++    typedef void *ClientData;
++#   else
++    typedef int *ClientData;
++#   endif /* __STDC__ */
++#define _CLIENTDATA
++#endif
++
++typedef void (*OS_AsyncProc) (ClientData clientData, int len);
++
++DLLAPI int OS_LibInit(int stdioFds[3]);
++DLLAPI void OS_LibShutdown(void);
++DLLAPI int OS_CreateLocalIpcFd(const char *bindPath, int backlog);
++DLLAPI int OS_FcgiConnect(char *bindPath);
++DLLAPI int OS_Read(int fd, char * buf, size_t len);
++DLLAPI int OS_Write(int fd, char * buf, size_t len);
++DLLAPI int OS_SpawnChild(char *execPath, int listenFd);
++DLLAPI int OS_AsyncReadStdin(void *buf, int len, OS_AsyncProc procPtr,
++                             ClientData clientData);
++DLLAPI int OS_AsyncRead(int fd, int offset, void *buf, int len,
++                        OS_AsyncProc procPtr, ClientData clientData);
++DLLAPI int OS_AsyncWrite(int fd, int offset, void *buf, int len,
++                         OS_AsyncProc procPtr, ClientData clientData);
++DLLAPI int OS_Close(int fd, int shutdown);
++DLLAPI int OS_CloseRead(int fd);
++DLLAPI int OS_DoIo(struct timeval *tmo);
++DLLAPI int OS_Accept(int listen_sock, int fail_on_intr, const char *webServerAddrs);
++DLLAPI int OS_IpcClose(int ipcFd, int shutdown);
++DLLAPI int OS_IsFcgi(int sock);
++DLLAPI void OS_SetFlags(int fd, int flags);
++
++DLLAPI void OS_ShutdownPending(void);
++
++#if defined (__cplusplus) || defined (c_plusplus)
++} /* terminate extern "C" { */
++#endif
++
++#endif /* _FCGIOS_H */
+diff --git a/lib/libfcgi++.a b/lib/libfcgi++.a
+new file mode 100644
+index 0000000..dffb45d
+Binary files /dev/null and b/lib/libfcgi++.a differ
+diff --git a/lib/libfcgi++.so b/lib/libfcgi++.so
+new file mode 120000
+index 0000000..caa80e4
+--- /dev/null
++++ b/lib/libfcgi++.so
+@@ -0,0 +1 @@
++libfcgi++.so.0
+\ No newline at end of file
+diff --git a/lib/libfcgi++.so.0 b/lib/libfcgi++.so.0
+new file mode 120000
+index 0000000..f6a7570
+--- /dev/null
++++ b/lib/libfcgi++.so.0
+@@ -0,0 +1 @@
++libfcgi++.so.0.0.0
+\ No newline at end of file
+diff --git a/lib/libfcgi++.so.0.0.0 b/lib/libfcgi++.so.0.0.0
+new file mode 100644
+index 0000000..e46832b
+Binary files /dev/null and b/lib/libfcgi++.so.0.0.0 differ
+diff --git a/lib/libfcgi.a b/lib/libfcgi.a
+new file mode 100644
+index 0000000..18329c7
+Binary files /dev/null and b/lib/libfcgi.a differ
+diff --git a/lib/libfcgi.so b/lib/libfcgi.so
+new file mode 120000
+index 0000000..3f021ea
+--- /dev/null
++++ b/lib/libfcgi.so
+@@ -0,0 +1 @@
++libfcgi.so.0
+\ No newline at end of file
+diff --git a/lib/libfcgi.so.0 b/lib/libfcgi.so.0
+new file mode 120000
+index 0000000..05bffdf
+--- /dev/null
++++ b/lib/libfcgi.so.0
+@@ -0,0 +1 @@
++libfcgi.so.0.0.0
+\ No newline at end of file
+diff --git a/lib/libfcgi.so.0.0.0 b/lib/libfcgi.so.0.0.0
+new file mode 100644
+index 0000000..d92877d
+Binary files /dev/null and b/lib/libfcgi.so.0.0.0 differ
+diff --git a/lib/libpq.so b/lib/libpq.so
+new file mode 120000
+index 0000000..136d9e0
+--- /dev/null
++++ b/lib/libpq.so
+@@ -0,0 +1 @@
++/usr/lib/x86_64-linux-gnu/libpq.so.5
+\ No newline at end of file
+diff --git a/src/main_d.cpp b/src/main_d.cpp
+new file mode 100644
+index 0000000..950299f
+--- /dev/null
++++ b/src/main_d.cpp
+@@ -0,0 +1,79 @@
++// 学生成绩管理系统 — D 方案入口（FastCGI + Nginx）
++// 通过 FastCGI 协议与 Nginx 通信，复用现有前端架构
++
++#include <cstdlib>
++#include <iostream>
++#include <string>
++
++#include "config.h"
++#include "dao.h"
++#include "handler.h"
++#include "models.h"
++
++#ifdef BUILD_SCHEME_D
++#include <fcgio.h>
++
++namespace {
++
++// 解析 FastCGI QUERY_STRING 中的 class 参数
++std::string ParseClassParam(const char* queryString) {
++  if (queryString == nullptr) return "";
++  const std::string query(queryString);
++  const std::string key = "class=";
++  size_t pos = query.find(key);
++  if (pos == std::string::npos) return "";
++  pos += key.size();
++  size_t end = query.find('&', pos);
++  return query.substr(pos, end == std::string::npos ? end : end - pos);
++}
++
++}  // namespace
++
++int main() {
++  // 加载配置
++  DbConfig config = LoadDbConfig();
++
++  // 连接数据库
++  std::cerr << "[main_d] 正在连接数据库 " << config.host << "...\n";
++  if (!ConnectDb(config)) {
++    std::cerr << "[main_d] 数据库连接失败，请检查配置\n";
++    return 1;
++  }
++  std::cerr << "[main_d] 数据库连接成功\n";
++
++  // 初始化 FastCGI
++  FCGX_Request request;
++  FCGX_Init();
++  FCGX_InitRequest(&request, 0, 0);
++
++  std::cerr << "[main_d] FastCGI 服务已启动，等待请求...\n";
++
++  // Accept 循环
++  while (FCGX_Accept_r(&request) == 0) {
++    // 解析 class 查询参数
++    const char* queryString = FCGX_GetParam("QUERY_STRING", request.envp);
++    std::string classFilter = ParseClassParam(queryString);
++
++    // 处理请求
++    std::string html = HandleIndex(classFilter);
++
++    // 输出 HTTP 响应
++    FCGX_FPrintF(request.out,
++        "Content-Type: text/html; charset=UTF-8\r\n"
++        "Content-Length: %zu\r\n"
++        "\r\n"
++        "%s",
++        html.size(), html.c_str());
++  }
++
++  // 清理
++  DisconnectDb();
++  return 0;
++}
++#else
++// 非 D 方案编译时提供占位 main，防止链接报错
++int main() {
++  std::cerr << "Error: D scheme not enabled. Use 'make SCHEME=D'.\n";
++  return 1;
++}
++#endif  // BUILD_SCHEME_D

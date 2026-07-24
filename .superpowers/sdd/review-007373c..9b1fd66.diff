@@ -1,0 +1,58 @@
+# Review package: 007373c..9b1fd66
+
+## Commits
+9b1fd66 Task 7: request handler (param parsing + dispatch)
+
+## Files changed
+ src/handler.cpp | 21 +++++++++++++++++++++
+ src/handler.h   | 14 ++++++++++++++
+ 2 files changed, 35 insertions(+)
+
+## Diff
+diff --git a/src/handler.cpp b/src/handler.cpp
+new file mode 100644
+index 0000000..b985511
+--- /dev/null
++++ b/src/handler.cpp
+@@ -0,0 +1,21 @@
++// 学生成绩管理系统 — 请求处理器实现
++
++#include "handler.h"
++
++#include <string>
++#include <vector>
++
++#include "models.h"
++#include "service.h"
++#include "template.h"
++
++std::string HandleIndex(const std::string& classFilter) {
++  // 获取班级列表
++  std::vector<std::string> classes = GetClasses();
++
++  // 获取成绩透视数据
++  std::vector<PivotRow> rows = GetStudentScores(classFilter);
++
++  // 渲染 HTML 页面
++  return RenderPage(classes, rows, classFilter);
++}
+diff --git a/src/handler.h b/src/handler.h
+new file mode 100644
+index 0000000..faf1096
+--- /dev/null
++++ b/src/handler.h
+@@ -0,0 +1,14 @@
++// 学生成绩管理系统 — 请求处理器
++// 解析 HTTP 参数，调度 Service 和 Template
++
++#ifndef SRC_HANDLER_H_
++#define SRC_HANDLER_H_
++
++#include <string>
++
++// 处理首页请求
++// classFilter: URL 中的 class 查询参数（已 URL 解码）
++// 返回完整的 HTML 响应体
++std::string HandleIndex(const std::string& classFilter);
++
++#endif  // SRC_HANDLER_H_
