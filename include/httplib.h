@@ -4144,7 +4144,7 @@ find_content_type(const std::string &path,
   auto it = user_data.find(ext);
   if (it != user_data.end()) { return it->second; }
 
-  using udl::operator""_t;
+  using namespace udl;
 
   switch (str2tag(ext)) {
   default: return default_content_type;
@@ -4202,7 +4202,7 @@ find_content_type(const std::string &path,
 }
 
 inline bool can_compress_content_type(const std::string &content_type) {
-  using udl::operator""_t;
+  using namespace udl;
 
   auto tag = str2tag(content_type);
 

@@ -1,29 +1,17 @@
-FROM centos:7.9.2009
+FROM docker.m.daocloud.io/library/debian:bookworm-slim
 
-# 切换至 CentOS Vault 镜像源（官方镜像站已下线）
-RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo && \
-    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
-
-# 安装 EPEL + 编译工具链
-RUN yum install -y epel-release && \
-    sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/epel*.repo && \
-    sed -i 's|#baseurl|baseurl|g' /etc/yum.repos.d/epel*.repo && \
-    sed -i 's|download.fedoraproject.org/pub|archives.fedoraproject.org/pub/archive|g' /etc/yum.repos.d/epel*.repo && \
-    yum install -y \
-    gcc-c++ make \
-    postgresql-devel \
-    && yum clean all
-
-# 下载 cpp-httplib
-RUN curl -fsSL -o /usr/local/include/httplib.h \
-    https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.23.0/httplib.h
+# 安装编译工具链和 PostgreSQL 客户端
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    g++ make libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY . .
 
-# 编译 A 方案
-RUN make SCHEME=A -j$(nproc)
+# 编译 A 方案（httplib.h v0.23 需要 C++14）
+RUN make SCHEME=A CXXFLAGS="-std=c++14 -Wall -Wextra -O2 -Iinclude" \
+    LDFLAGS="-lpq -lpthread -Llib -Wl,-rpath,lib" -j$(nproc)
 
 EXPOSE 8080
 
-CMD ["./build/app_a"]
+CMD ["bash", "-c", "while ! timeout 1 bash -c 'echo >/dev/tcp/$DB_HOST/$DB_PORT' 2>/dev/null; do echo 'waiting for db...'; sleep 1; done; echo 'db ready'; exec ./build/app_a"]
