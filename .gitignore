@@ -7,3 +7,4 @@ coverage.info
 coverage_html/
 .vscode/
 *.swp
+*.deb

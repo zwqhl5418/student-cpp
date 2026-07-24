@@ -16,7 +16,7 @@ ifeq ($(SCHEME), D)
   TARGET   := $(BUILD_DIR)/app_d
   SRCS     += src/main_d.cpp
   CXXFLAGS += -DBUILD_SCHEME_D
-  LDFLAGS  += -lfcgi++
+  LDFLAGS  += -lfcgi -lfcgi++ -Llib -Wl,-rpath,lib
 else
   SRCS     += src/main_a.cpp
 endif
