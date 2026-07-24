@@ -1,0 +1,9 @@
+build/
+*.o
+*.d
+app_a
+app_d
+coverage.info
+coverage_html/
+.vscode/
+*.swp
