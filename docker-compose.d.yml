@@ -1,0 +1,35 @@
+version: "3.8"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.d
+    ports:
+      - "8081:80"
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: student_grades
+      DB_USER: student_app
+      DB_PASSWORD: student_pass
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:14.9
+    environment:
+      POSTGRES_DB: student_grades
+      POSTGRES_USER: student_app
+      POSTGRES_PASSWORD: student_pass
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U student_app"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

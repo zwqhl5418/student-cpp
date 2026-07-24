@@ -1,0 +1,51 @@
+FROM centos:7.9.2009
+
+# 切换至 CentOS Vault 镜像源
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*.repo
+
+# 安装 EPEL + 编译工具 + 测试依赖
+RUN yum install -y epel-release && \
+    sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/epel*.repo && \
+    sed -i 's|#baseurl|baseurl|g' /etc/yum.repos.d/epel*.repo && \
+    sed -i 's|download.fedoraproject.org/pub|archives.fedoraproject.org/pub/archive|g' /etc/yum.repos.d/epel*.repo && \
+    yum install -y \
+    gcc-c++ make \
+    postgresql-devel \
+    lcov \
+    && yum clean all
+
+# 从源码编译 Google Test（CentOS 7 无预编译包）
+RUN curl -fsSL -o /tmp/googletest.tar.gz \
+    https://github.com/google/googletest/archive/refs/tags/v1.10.x.tar.gz && \
+    cd /tmp && tar xf googletest.tar.gz && \
+    cd googletest-1.10.x && \
+    g++ -std=c++11 -isystem googletest/include -Igoogletest \
+        -pthread -c googletest/src/gtest-all.cc -o gtest-all.o && \
+    ar rcs /usr/lib/libgtest.a gtest-all.o && \
+    g++ -std=c++11 -isystem googletest/include -Igoogletest \
+        -pthread -c googletest/src/gtest_main.cc -o gtest_main.o && \
+    ar rcs /usr/lib/libgtest_main.a gtest_main.o && \
+    mkdir -p /usr/include/gtest && \
+    cp -r googletest/include/gtest/* /usr/include/gtest/ && \
+    rm -rf /tmp/googletest*
+
+# 下载 cpp-httplib（A 方案编译需要）
+RUN curl -fsSL -o /usr/local/include/httplib.h \
+    https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.23.0/httplib.h
+
+ARG COVERAGE=0
+ENV ENABLE_COVERAGE=${COVERAGE}
+
+WORKDIR /app
+COPY . .
+
+# 构建并运行测试
+CMD if [ "${ENABLE_COVERAGE}" = "1" ]; then \
+      make CXXFLAGS="-std=c++11 -Wall -Wextra -g -O0 --coverage" \
+           LDFLAGS="-lpq -lpthread -lgtest -lgtest_main --coverage" test ; \
+      lcov --capture --directory . --output-file coverage.info ; \
+      genhtml coverage.info --output-directory coverage_html ; \
+    else \
+      make test ; \
+    fi

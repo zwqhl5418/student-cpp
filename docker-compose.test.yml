@@ -1,0 +1,31 @@
+version: "3.8"
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        COVERAGE: "${COVERAGE:-0}"
+    environment:
+      DB_HOST: test-db
+      DB_PORT: "5432"
+      DB_NAME: student_grades
+      DB_USER: student_app
+      DB_PASSWORD: student_pass
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  test-db:
+    image: postgres:14.9
+    environment:
+      POSTGRES_DB: student_grades
+      POSTGRES_USER: student_app
+      POSTGRES_PASSWORD: student_pass
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U student_app"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
