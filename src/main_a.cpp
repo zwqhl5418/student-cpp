@@ -11,20 +11,6 @@
 #include "httplib.h"
 #include "models.h"
 
-namespace {
-
-// 从 URL 查询字符串中提取 class 参数值
-std::string ParseClassParam(const std::string& query) {
-  const std::string key = "class=";
-  size_t pos = query.find(key);
-  if (pos == std::string::npos) return "";
-  pos += key.size();
-  size_t end = query.find('&', pos);
-  return query.substr(pos, end == std::string::npos ? end : end - pos);
-}
-
-}  // namespace
-
 int main() {
   // 加载配置
   DbConfig config = LoadDbConfig();

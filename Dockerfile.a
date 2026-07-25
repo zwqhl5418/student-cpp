@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY . .
 
-# 编译 A 方案（httplib.h v0.23 需要 C++14）
-RUN make SCHEME=A CXXFLAGS="-std=c++14 -Wall -Wextra -O2 -Iinclude" \
+# 编译 A 方案（C++11，gcc 4.8.5+ 兼容）
+RUN make SCHEME=A CXXFLAGS="-std=c++11 -Wall -Wextra -O2 -Iinclude" \
     LDFLAGS="-lpq -lpthread -Llib -Wl,-rpath,lib" -j$(nproc)
 
 EXPOSE 8080
